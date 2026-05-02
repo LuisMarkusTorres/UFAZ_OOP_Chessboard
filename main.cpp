@@ -1,3 +1,9 @@
+// Compile and execute:
+//$ make
+//$ ./chess
+// If there is a move file, run with :
+//$ cat [file] | ./chess
+
 #include "jeu.h"
 #include <iostream>
 using namespace std;
