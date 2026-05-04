@@ -34,6 +34,11 @@ public:
         return false; 
     }
 
+    // Used for en passant detection in Game
+    virtual bool isPawn() const {
+        return false;
+    }
+
 protected:
     Color color;
 
@@ -57,12 +62,22 @@ protected:
 
 
 class King : public Piece {
+protected:
+    bool hasMoved = false;
 public:
-    King(Color c) : Piece(c) {}
+    King(Color c) 
+        : Piece(c) {}
+        
     bool isLegalMove(int fromCol, int fromRow, int toCol, int toRow,
-                           Piece* const board[8][8]) const override;
+                     Piece* const board[8][8]) const override;
+
     std::string symbol() const override { return color == WHITE ? "♚" : "♔"; }
     bool isKing() const override { return true; }
+
+    bool hasEverMoved() const { return hasMoved; }
+    virtual void markMoved() {
+        hasMoved = true;
+    }
 };
 
 
@@ -79,6 +94,8 @@ public:
 
 
 class Rook : public Piece {
+protected:
+    bool hasMoved = false;
 public:
     Rook(Color c) 
         : Piece(c) {}
@@ -87,6 +104,10 @@ public:
                      Piece* const board[8][8]) const override;
 
     std::string symbol() const override { return color == WHITE ? "♜" : "♖"; }
+    bool hasEverMoved() const { return hasMoved; }
+    virtual void markMoved() {
+        hasMoved = true;
+    }
 };
 
 
@@ -119,7 +140,14 @@ public:
 
     bool isLegalMove(int fromCol, int fromRow, int toCol, int toRow,
                      Piece* const board[8][8]) const override;
+
+    // En passant-aware overload: epCol/epRow are the coordinates of the
+    // enemy pawn that just double-pushed (-1 if none available this turn).
+    bool isLegalMove(int fromCol, int fromRow, int toCol, int toRow,
+                     Piece* const board[8][8], int epCol, int epRow) const;
+
     std::string symbol() const override { return color == WHITE ? "♟" : "♙"; }
+    bool isPawn() const override { return true; }
 };
 
 #endif

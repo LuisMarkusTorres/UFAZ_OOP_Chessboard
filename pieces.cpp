@@ -116,3 +116,32 @@ bool Pawn::isLegalMove(int fromCol, int fromRow, int toCol, int toRow,
 
     return false;
 }
+
+bool Pawn::isLegalMove(int fromCol, int fromRow, int toCol, int toRow,
+                       Piece* const board[8][8], int epCol, int epRow) const {
+
+    // All normal pawn rules still apply first
+    if (isLegalMove(fromCol, fromRow, toCol, toRow, board))
+        return true;
+
+    // En passant is only triggered when valid EP state exists
+    if (epCol == -1) return false;
+
+    int direction = (color == WHITE) ? 1 : -1;
+    int dCol = toCol - fromCol;
+    int dRow = toRow - fromRow;
+
+    /* The capturing pawn moves one square diagonally forward.
+    The destination square is empty (no piece there to capture normally).
+    The target square is the one directly behind the enemy pawn that
+    just double-pushed: that pawn sits at (epCol, epRow), and we land
+    one step in our forward direction from it. */
+    if (abs(dCol) == 1 && dRow == direction) {
+        Piece* dest = board[toCol][toRow];
+        if (!dest && toCol == epCol && toRow == epRow + direction) {
+            return true;
+        }
+    }
+
+    return false;
+}

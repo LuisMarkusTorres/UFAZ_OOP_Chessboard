@@ -23,10 +23,6 @@ public:
 
     Color getTurn() const { return turn; }
 
-    void setEnPassantPiece(){
-        
-    }
-
 private:
     // Square indexes (0..7 for columns and rows).
     using Case = std::pair<int,int>; // (colonne, ligne) = (column, row)
@@ -51,7 +47,9 @@ private:
     bool isInCheck(Color roiCouleur) const;
 
     // Simulate a move on a copy and check for king in check.
-    bool putsInCheck(int fromCol, int fromRow, int toCol, int toRow) const;
+    // epCol/epRow: current en passant target (-1 if none).
+    bool putsInCheck(int fromCol, int fromRow, int toCol, int toRow,
+                     int epCol, int epRow) const;
 
     // Helper to get the symbol of a square for display.
     std::string squareSymbol(int col, int lig) const;

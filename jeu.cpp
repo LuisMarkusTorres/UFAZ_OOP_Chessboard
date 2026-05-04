@@ -110,16 +110,25 @@ bool Game::isInCheck(Color roiCouleur) const {
 }
 
 
-bool Game::putsInCheck(int fromCol, int fromRow, int toCol, int toRow) const {
+bool Game::putsInCheck(int fromCol, int fromRow, int toCol, int toRow,
+                       int epCol, int epRow) const {
     // Create a copy of the board to simulate the move.
     Piece* copie[8][8];
     for (int lig = 0; lig < 8; ++lig)
         for (int col = 0; col < 8; ++col)
-            copie[col][lig] = board[col][lig]; // Attention : shallow copy.
+            copie[col][lig] = board[col][lig]; // shallow copy
 
     // Simulate the move on the copy
     copie[toCol][toRow] = copie[fromCol][fromRow];
     copie[fromCol][fromRow] = nullptr;
+
+    // If this was an en passant capture, also remove the captured pawn
+    // from the simulation (it sits beside the capturing pawn, not on toRow).
+    Piece* moved = copie[toCol][toRow];
+    if (moved && moved->isPawn() && epCol != -1 &&
+        toCol == epCol && toRow == epRow + ((moved->getColor() == WHITE) ? 1 : -1)) {
+        copie[epCol][epRow] = nullptr; // remove the sideways pawn
+    }
 
     // Check if the player's king is in check after this move.
     int kingCol = -1, kingRow = -1;
@@ -207,14 +216,57 @@ void Game::move(const string& orig, const string& dest) {
             throw runtime_error("That's not your piece.");
         }
 
-        if (!piece->isLegalMove(fromCol, fromRow, toCol, toRow, board)) {
+        /* Snapshot the current En Passant state before resetting it.
+        En Passant is only valid for exactly one turn, so we capture it here
+        to validate this move, then it will be overwritten below. */
+        int currentEpCol = enPassantCol;
+        int currentEpRow = enPassantRow;
+
+        /* Check move legality: pawns have a separate isLegalMove function,
+        which is overloaded because of En Passant checking. */
+        bool legal = false;
+        if (piece->isPawn()) {
+            Pawn* pawn = static_cast<Pawn*>(piece);
+            legal = pawn->isLegalMove(fromCol, fromRow, toCol, toRow, board,
+                                      currentEpCol, currentEpRow);
+        } else {
+            legal = piece->isLegalMove(fromCol, fromRow, toCol, toRow, board);
+        }
+
+        if (!legal) {
             throw runtime_error("Illegal move for that piece.");
         }
 
-        // Can't put yourself in check.
-        if (putsInCheck(fromCol, fromRow, toCol, toRow)) {
+        // Detect en passant capture *before* moving anything on the board:
+        /* 1. Piece is a pawn
+           2. The move is diagonal, given that toCol != fromCol
+           3. The square to which it moves to is empty
+           4. There is a valid En Passant target, given that 
+           currentEpCol != -1 and toCol == currentEpCol*/
+        bool isEnPassantCapture = false;
+        if (piece->isPawn() && currentEpCol != -1 && toCol == currentEpCol && 
+            board[toCol][toRow] == nullptr && toCol != fromCol) { // diagonal move
+            isEnPassantCapture = true;
+        }
+
+        // Can't put yourself in check (pass En Passant state so the simulation is accurate).
+        if (putsInCheck(fromCol, fromRow, toCol, toRow, currentEpCol, currentEpRow)) {
             throw runtime_error("This move would leave your king in check.");
         }
+
+        // --- All checks passed: execute the move ---
+
+        // Reset en passant: by default no EP is available next turn.
+        enPassantCol = -1;
+        enPassantRow = -1;
+
+        // If this is an en passant capture, delete the captured pawn sideways.
+        if (isEnPassantCapture) {
+            delete board[currentEpCol][currentEpRow];
+            board[currentEpCol][currentEpRow] = nullptr;
+        }
+
+        // Standard capture at destination square.
         if (board[toCol][toRow]) {
             delete board[toCol][toRow];
             board[toCol][toRow] = nullptr;
@@ -222,6 +274,13 @@ void Game::move(const string& orig, const string& dest) {
 
         board[toCol][toRow] = piece;
         board[fromCol][fromRow] = nullptr;
+
+        // If a pawn just double-pushed, record it as the En Passant target for next turn.
+        int direction = (turn == WHITE) ? 1 : -1;
+        if (piece->isPawn() && toRow - fromRow == 2 * direction) {
+            enPassantCol = toCol;
+            enPassantRow = toRow; // the pawn's new position (used by EP-aware isLegalMove)
+        }
 
         check = false;
         turn = (turn == WHITE) ? BLACK : WHITE;
