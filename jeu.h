@@ -6,9 +6,13 @@
 #include "pieces.h"
 
 class Game {
+private:
+    int enPassantCol = -1;  // column of the pawn that just double-pushed
+    int enPassantRow = -1;  // row of that pawn (-1 = no en passant available)
+
 public:
-    Game();
-    ~Game();
+    Game(); // constructor
+    ~Game(); // destructor
 
     // Show the board and status.
     void display() const;
@@ -19,11 +23,16 @@ public:
 
     Color getTurn() const { return turn; }
 
+    void setEnPassantPiece(){
+        
+    }
+
 private:
     // Square indexes (0..7 for columns and rows).
-    using Case = std::pair<int,int>; // (colonne, ligne)
+    using Case = std::pair<int,int>; // (colonne, ligne) = (column, row)
 
-    // 8x8 board, nullptr for empty square.
+    // 8x8 board which contains the Piece class
+    // nullptr --> empty square.
     Piece* board[8][8];
 
     // Color of the player to move.

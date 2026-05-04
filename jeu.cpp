@@ -5,7 +5,10 @@
 
 using namespace std;
 
+// Implementation of the constructor
 Game::Game() : turn(WHITE), check(false) {
+
+    // Board creation
     for (int lig = 0; lig < 8; ++lig)
         for (int col = 0; col < 8; ++col)
             board[col][lig] = nullptr;
@@ -39,31 +42,45 @@ Game::Game() : turn(WHITE), check(false) {
         board[col][6] = new Pawn(BLACK);
 }
 
+
 Game::~Game() {
-    clearBoard();
+    clearBoard(); // Upon calling the destructor the board is auto-cleared
 }
+
 
 Game::Case Game::parseSquare(const string& s) const {
     if (s.size() != 2) throw invalid_argument("Invalid coordinate.");
-    char colChar = tolower(s[0]);
+    char colChar = tolower(s[0]); // tolower as columns are indicated as letters a-h
     char rowChar = s[1];
+    
+    // binary char checker
     if (colChar < 'a' || colChar > 'h' || rowChar < '1' || rowChar > '8')
         throw invalid_argument("Coordinate off the board.");
+    
+    // char binary arithmetic turned to int
     int col = colChar - 'a';
     int lig = rowChar - '1';
     return {col, lig};
 }
 
+// Check if the given coordinates are in the board boundary
 bool Game::isValidSquare(int col, int lig) const {
     return col >= 0 && col < 8 && lig >= 0 && lig < 8;
 }
 
+
 bool Game::isInCheck(Color roiCouleur) const {
-    // Get the king's position.
-    int kingCol = -1, kingRow = -1;
+    int kingCol = -1, kingRow = -1; // not possible king position
+
+    // Firstly we get the king's position.
+    /* We go through the board and try to find 
+    our wanted King piece on each square */
     for (int lig = 0; lig < 8; ++lig) {
         for (int col = 0; col < 8; ++col) {
             Piece* p = board[col][lig];
+            /* If the square is not empty and the color of the
+            piece is correct and the piece is the King piece 
+            Then we write down the King's actual position */
             if (p && p->getColor() == roiCouleur && p->isKing()) {
                 kingCol = col;
                 kingRow = lig;
@@ -72,13 +89,17 @@ bool Game::isInCheck(Color roiCouleur) const {
         }
         if (kingCol != -1) break;
     }
+
     if (kingCol == -1) return false; // Not supposed to happen in a valid game.
 
-    // Check if any opponent piece can move to the king's square.
-    Color adversaire = (roiCouleur == WHITE) ? BLACK : WHITE;
+    // the opposing color of our King piece
+    Color adversaire = (roiCouleur == WHITE) ? BLACK : WHITE; 
+    // We check if any opponent piece can move to the king's square
+    // If it can --> return true  |  Otherwise --> return false
     for (int lig = 0; lig < 8; ++lig) {
         for (int col = 0; col < 8; ++col) {
             Piece* p = board[col][lig];
+            
             if (p && p->getColor() == adversaire) {
                 if (p->isLegalMove(col, lig, kingCol, kingRow, board))
                     return true;
@@ -87,6 +108,7 @@ bool Game::isInCheck(Color roiCouleur) const {
     }
     return false;
 }
+
 
 bool Game::putsInCheck(int fromCol, int fromRow, int toCol, int toRow) const {
     // Create a copy of the board to simulate the move.
@@ -126,6 +148,7 @@ bool Game::putsInCheck(int fromCol, int fromRow, int toCol, int toRow) const {
     return false;
 }
 
+
 string Game::squareSymbol(int col, int lig) const {
     Piece* p = board[col][lig];
     if (p) {
@@ -134,6 +157,7 @@ string Game::squareSymbol(int col, int lig) const {
         return "     "; 
     }
 }
+
 
 void Game::separatorLine() const {
     cout << " +-----+-----+-----+-----+-----+-----+-----+-----+" << endl;
@@ -145,6 +169,7 @@ void Game::clearBoard() {
             delete board[col][lig];
 }
 
+
 void Game::display() const {
     cout << "    a     b     c     d     e     f     g     h    " << endl;
 
@@ -154,8 +179,10 @@ void Game::display() const {
         for (int col = 0; col < 8; ++col) {
             cout << squareSymbol(col, lig) << "|";
         }
+        cout << " " << (lig+1);
         cout << endl;
     }
+
     separatorLine();
 
     // Get the player's turn and check status.
