@@ -32,10 +32,7 @@ int main() {
             cout << "Draw." << endl;
             stop = true;
         } else {
-            // Regular move
-            string orig = move.substr(0, 2);
-            string dest = move.substr(2, 2);
-            mygame.move(orig, dest);
+            mygame.tryMove(move);
             mygame.display();
         }
     } while (!stop);

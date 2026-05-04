@@ -109,6 +109,20 @@ bool Game::isInCheck(Color roiCouleur) const {
     return false;
 }
 
+// Checks if a given square is attacked by any piece of byColor.
+// Reuses each piece's isLegalMove — same logic as isInCheck but for any square.
+bool Game::isSquareAttacked(int col, int row, Color byColor) const {
+    for (int lig = 0; lig < 8; ++lig) {
+        for (int c = 0; c < 8; ++c) {
+            Piece* p = board[c][lig];
+            if (p && p->getColor() == byColor) {
+                if (p->isLegalMove(c, lig, col, row, board))
+                    return true;
+            }
+        }
+    }
+    return false;
+}
 
 bool Game::putsInCheck(int fromCol, int fromRow, int toCol, int toRow,
                        int epCol, int epRow) const {
@@ -199,6 +213,7 @@ void Game::display() const {
          << (check ? " Check!" : "") << endl;
 }
 
+
 void Game::move(const string& orig, const string& dest) {
     try {
         auto [fromCol, fromRow] = parseSquare(orig);
@@ -216,14 +231,13 @@ void Game::move(const string& orig, const string& dest) {
             throw runtime_error("That's not your piece.");
         }
 
-        /* Snapshot the current En Passant state before resetting it.
-        En Passant is only valid for exactly one turn, so we capture it here
-        to validate this move, then it will be overwritten below. */
+        // Snapshot the current EP state before resetting it.
+        // EP is only valid for exactly one turn, so we capture it here
+        // to validate this move, then it will be overwritten below.
         int currentEpCol = enPassantCol;
         int currentEpRow = enPassantRow;
 
-        /* Check move legality: pawns have a separate isLegalMove function,
-        which is overloaded because of En Passant checking. */
+        // Check move legality: pawns get the EP-aware overload, others the standard one.
         bool legal = false;
         if (piece->isPawn()) {
             Pawn* pawn = static_cast<Pawn*>(piece);
@@ -238,18 +252,15 @@ void Game::move(const string& orig, const string& dest) {
         }
 
         // Detect en passant capture *before* moving anything on the board:
-        /* 1. Piece is a pawn
-           2. The move is diagonal, given that toCol != fromCol
-           3. The square to which it moves to is empty
-           4. There is a valid En Passant target, given that 
-           currentEpCol != -1 and toCol == currentEpCol*/
+        // it's a pawn, moving diagonally, to an empty square, with a valid EP target.
         bool isEnPassantCapture = false;
-        if (piece->isPawn() && currentEpCol != -1 && toCol == currentEpCol && 
-            board[toCol][toRow] == nullptr && toCol != fromCol) { // diagonal move
+        if (piece->isPawn() && currentEpCol != -1 &&
+            toCol == currentEpCol && board[toCol][toRow] == nullptr &&
+            toCol != fromCol) { // diagonal move
             isEnPassantCapture = true;
         }
 
-        // Can't put yourself in check (pass En Passant state so the simulation is accurate).
+        // Can't put yourself in check (pass EP state so the simulation is accurate).
         if (putsInCheck(fromCol, fromRow, toCol, toRow, currentEpCol, currentEpRow)) {
             throw runtime_error("This move would leave your king in check.");
         }
@@ -275,7 +286,13 @@ void Game::move(const string& orig, const string& dest) {
         board[toCol][toRow] = piece;
         board[fromCol][fromRow] = nullptr;
 
-        // If a pawn just double-pushed, record it as the En Passant target for next turn.
+        // Mark king/rook as having moved so castling rights are lost.
+        if (piece->isKing())
+            static_cast<King*>(piece)->hasMoved = true;
+        else if (dynamic_cast<Rook*>(piece))
+            static_cast<Rook*>(piece)->hasMoved = true;
+
+        // If a pawn just double-pushed, record it as the EP target for next turn.
         int direction = (turn == WHITE) ? 1 : -1;
         if (piece->isPawn() && toRow - fromRow == 2 * direction) {
             enPassantCol = toCol;
@@ -293,4 +310,118 @@ void Game::move(const string& orig, const string& dest) {
         cerr << "Error: " << e.what() << endl;
         return;
     }
+}
+
+
+void Game::castle(bool kingside) {
+    try {
+        // if king white --> first row  |  Otherwise --> last row
+        int row = (turn == WHITE) ? 0 : 7;
+        Color opponent = (turn == WHITE) ? BLACK : WHITE; // opponent color
+
+        // --- 1. Locate the king and verify it hasn't moved ---
+        int kingCol = 4; // Both Kings always start on the e-file (col 4)
+        Piece* kingPiece = board[kingCol][row];
+        
+        /* If the starting position is empty or
+        The piece is not the King piece or
+        The color of the king doesn't match
+        Then --> cannot castle */
+        if (!kingPiece || !kingPiece->isKing() || kingPiece->getColor() != turn)
+            throw runtime_error("King not on its starting square.");
+
+        // If the King piece has moved, also cannot castle
+        if (static_cast<King*>(kingPiece)->hasMoved)
+            throw runtime_error("Cannot castle: king has already moved.");
+
+        // --- 2. Locate the rook and verify it hasn't moved ---
+        // Determine the rook column, depending if short or long castling
+        int rookCol = kingside ? 7 : 0; 
+        Piece* rookPiece = board[rookCol][row];
+
+        /* If the starting pos is empty or
+        the piece is not a rook piece or
+        the rook color is incorrect 
+        Then --> cannot castle*/
+        if (!rookPiece || !dynamic_cast<Rook*>(rookPiece) || rookPiece->getColor() != turn)
+            throw runtime_error("Rook not on its starting square.");
+        
+        // If the rook hasn moved --> cannot castle
+        if (static_cast<Rook*>(rookPiece)->hasMoved)
+            throw runtime_error("Cannot castle: rook has already moved.");
+
+        // --- 3. All squares between king and rook must be empty ---
+        // Kingside: cols 5,6 must be empty.  Queenside: cols 1,2,3 must be empty.
+        /* If long short castle --> the step (1) is positive, so goes towards columns 5, 6
+        Otherwise --> the step is negative, checking the 1,2,3 columns */
+        int step = kingside ? 1 : -1; 
+        for (int c = kingCol + step; c != rookCol; c += step) {
+            if (board[c][row] != nullptr) // if there is a piece inbetween --> not possible to castle
+                throw runtime_error("Cannot castle: pieces between king and rook.");
+        }
+
+        // --- 4. King must not currently be in check ---
+        if (isInCheck(turn))
+            throw runtime_error("Cannot castle while in check.");
+
+        // --- 5. King must not pass through or land on an attacked square ---
+        // Kingside: king travels e→f→g (cols 4→5→6).
+        // Queenside: king travels e→d→c (cols 4→3→2).
+        int kingDest = kingside ? 6 : 2;
+        for (int c = kingCol + step; ; c += step) { // step has already been chosen given the type of castling
+            if (isSquareAttacked(c, row, opponent))
+                throw runtime_error("Cannot castle: king passes through or lands on attacked square.");
+            if (c == kingDest) break;
+        }
+
+        // --- All checks passed: execute castling ---
+
+        // Move king to its destination square.
+        board[kingDest][row] = kingPiece;
+        board[kingCol][row]  = nullptr;
+        static_cast<King*>(kingPiece)->hasMoved = true;
+
+        // Move rook to the square the king just crossed.
+        int rookDest = kingside ? 5 : 3;
+        board[rookDest][row] = rookPiece;
+        board[rookCol][row]  = nullptr;
+        static_cast<Rook*>(rookPiece)->hasMoved = true;
+
+        // En passant is always reset after any move.
+        enPassantCol = -1;
+        enPassantRow = -1;
+
+        check = false;
+        turn = (turn == WHITE) ? BLACK : WHITE;
+        if (isInCheck(turn))
+            check = true;
+
+    } catch (const exception& e) {
+        cerr << "Error: " << e.what() << endl;
+    }
+}
+
+// Responsible for castling and regular moves
+void Game::tryMove(const string& input) {
+    /* Castling input: "O-O" (kingside) or "O-O-O" (queenside).
+    We check the string contents, to determine
+    to castle or make a reqular move */
+    if (input == "O-O") {
+        castle(true);
+        return;
+    }
+    if (input == "O-O-O") {
+        castle(false);
+        return;
+    }
+
+    // Regular move: must be exactly 4 characters (e.g. "e2e4").
+    if (input.size() != 4) {
+        cerr << "Error: Unknown command. Use e.g. 'e2e4', 'O-O', or 'O-O-O'." << endl;
+        return;
+    }
+
+    string orig = input.substr(0, 2);
+    string dest = input.substr(2, 2);
+    move(orig, dest);
 }

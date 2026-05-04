@@ -17,9 +17,8 @@ public:
     // Show the board and status.
     void display() const;
 
-    // Execute a move (or special command).
-    // orig, dest : strings of 2 characters (e.g., "b1", "c3").
-    void move(const std::string& orig, const std::string& dest);
+    // Single entry point for all input: handles "e2e4" moves, "O-O", "O-O-O".
+    void tryMove(const std::string& input);
 
     Color getTurn() const { return turn; }
 
@@ -46,10 +45,19 @@ private:
     // Verify if the given color's king is in check.
     bool isInCheck(Color roiCouleur) const;
 
+    // Verify if a specific square is attacked by any opponent piece.
+    bool isSquareAttacked(int col, int row, Color byColor) const;
+
     // Simulate a move on a copy and check for king in check.
     // epCol/epRow: current en passant target (-1 if none).
     bool putsInCheck(int fromCol, int fromRow, int toCol, int toRow,
                      int epCol, int epRow) const;
+
+    // Execute a regular piece move (e.g. "e2" -> "e4").
+    void move(const std::string& orig, const std::string& dest);
+
+    // Execute castling. kingside=true for O-O, false for O-O-O.
+    void castle(bool kingside);
 
     // Helper to get the symbol of a square for display.
     std::string squareSymbol(int col, int lig) const;

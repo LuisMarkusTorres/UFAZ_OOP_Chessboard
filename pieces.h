@@ -62,22 +62,14 @@ protected:
 
 
 class King : public Piece {
-protected:
-    bool hasMoved = false;
 public:
-    King(Color c) 
-        : Piece(c) {}
-        
+    King(Color c) : Piece(c), hasMoved(false) {}
     bool isLegalMove(int fromCol, int fromRow, int toCol, int toRow,
-                     Piece* const board[8][8]) const override;
-
+                           Piece* const board[8][8]) const override;
     std::string symbol() const override { return color == WHITE ? "♚" : "♔"; }
     bool isKing() const override { return true; }
 
-    bool hasEverMoved() const { return hasMoved; }
-    virtual void markMoved() {
-        hasMoved = true;
-    }
+    bool hasMoved; // set to true after the king's first move, blocks castling
 };
 
 
@@ -94,20 +86,15 @@ public:
 
 
 class Rook : public Piece {
-protected:
-    bool hasMoved = false;
 public:
-    Rook(Color c) 
-        : Piece(c) {}
+    Rook(Color c) : Piece(c), hasMoved(false) {}
 
     bool isLegalMove(int fromCol, int fromRow, int toCol, int toRow,
                      Piece* const board[8][8]) const override;
 
     std::string symbol() const override { return color == WHITE ? "♜" : "♖"; }
-    bool hasEverMoved() const { return hasMoved; }
-    virtual void markMoved() {
-        hasMoved = true;
-    }
+
+    bool hasMoved; // set to true after the rook's first move, blocks castling
 };
 
 
