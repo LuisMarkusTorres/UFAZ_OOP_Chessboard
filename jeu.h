@@ -59,6 +59,10 @@ private:
     // Execute castling. kingside=true for O-O, false for O-O-O.
     void castle(bool kingside);
 
+    // Ask the player which piece to promote a pawn to and replace it on the board.
+    // col/row: the square the pawn just reached.
+    void promote(int col, int row);
+
     // Helper to get the symbol of a square for display.
     std::string squareSymbol(int col, int lig) const;
 

@@ -231,13 +231,14 @@ void Game::move(const string& orig, const string& dest) {
             throw runtime_error("That's not your piece.");
         }
 
-        // Snapshot the current EP state before resetting it.
-        // EP is only valid for exactly one turn, so we capture it here
-        // to validate this move, then it will be overwritten below.
+        /* Snapshot the current En Passant state before resetting it.
+        En Passant is only valid for exactly one turn, so we capture it here
+        to validate this move, then it will be overwritten below. */
         int currentEpCol = enPassantCol;
         int currentEpRow = enPassantRow;
 
-        // Check move legality: pawns get the EP-aware overload, others the standard one.
+        /* Check move legality: pawns have a separate isLegalMove function,
+        which is overloaded because of En Passant checking. */
         bool legal = false;
         if (piece->isPawn()) {
             Pawn* pawn = static_cast<Pawn*>(piece);
@@ -252,15 +253,18 @@ void Game::move(const string& orig, const string& dest) {
         }
 
         // Detect en passant capture *before* moving anything on the board:
-        // it's a pawn, moving diagonally, to an empty square, with a valid EP target.
+        /* 1. Piece is a pawn
+           2. The move is diagonal, given that toCol != fromCol
+           3. The square to which it moves to is empty
+           4. There is a valid En Passant target, given that 
+           currentEpCol != -1 and toCol == currentEpCol*/
         bool isEnPassantCapture = false;
-        if (piece->isPawn() && currentEpCol != -1 &&
-            toCol == currentEpCol && board[toCol][toRow] == nullptr &&
-            toCol != fromCol) { // diagonal move
+        if (piece->isPawn() && currentEpCol != -1 && toCol == currentEpCol && 
+            board[toCol][toRow] == nullptr && toCol != fromCol) { // diagonal move
             isEnPassantCapture = true;
         }
 
-        // Can't put yourself in check (pass EP state so the simulation is accurate).
+        // Can't put yourself in check (pass En Passant state so the simulation is accurate).
         if (putsInCheck(fromCol, fromRow, toCol, toRow, currentEpCol, currentEpRow)) {
             throw runtime_error("This move would leave your king in check.");
         }
@@ -286,13 +290,12 @@ void Game::move(const string& orig, const string& dest) {
         board[toCol][toRow] = piece;
         board[fromCol][fromRow] = nullptr;
 
-        // Mark king/rook as having moved so castling rights are lost.
-        if (piece->isKing())
-            static_cast<King*>(piece)->hasMoved = true;
-        else if (dynamic_cast<Rook*>(piece))
-            static_cast<Rook*>(piece)->hasMoved = true;
+        // Pawn promotion: white reaches row 7, black reaches row 0.
+        int promotionRow = (turn == WHITE) ? 7 : 0;
+        if (piece->isPawn() && toRow == promotionRow)
+            promote(toCol, toRow);
 
-        // If a pawn just double-pushed, record it as the EP target for next turn.
+        // If a pawn just double-pushed, record it as the En Passant target for next turn.
         int direction = (turn == WHITE) ? 1 : -1;
         if (piece->isPawn() && toRow - fromRow == 2 * direction) {
             enPassantCol = toCol;
@@ -309,6 +312,34 @@ void Game::move(const string& orig, const string& dest) {
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
         return;
+    }
+}
+
+
+void Game::promote(int col, int row) {
+    Color c = board[col][row]->getColor();
+    char choice = 0;
+
+    // Keep asking until the player gives a valid character.
+    while (true) {
+        cout << "Promote pawn to? [Q]ueen  [R]ook  [B]ishop  [N]knight : ";
+        cin >> choice;
+        choice = toupper(choice);
+        if (choice == 'Q' || choice == 'R' || choice == 'B' || choice == 'N')
+            break;
+        cerr << "Invalid choice. Please enter Q, R, B, or N." << endl;
+    }
+
+    // Delete the pawn that just reached the back rank.
+    delete board[col][row];
+    board[col][row] = nullptr;
+
+    // Place the chosen piece on the same square.
+    switch (choice) {
+        case 'Q': board[col][row] = new Queen(c);  break;
+        case 'R': board[col][row] = new Rook(c);   break;
+        case 'B': board[col][row] = new Bishop(c); break;
+        case 'N': board[col][row] = new Knight(c); break;
     }
 }
 
