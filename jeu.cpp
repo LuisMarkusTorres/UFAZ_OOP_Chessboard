@@ -208,14 +208,22 @@ void Game::display() const {
 
     separatorLine();
 
-    // Get the player's turn and check status.
-    cout << "[" << (turn == WHITE ? "White" : "Black") << "]"
-         << (check ? " Check!" : "") << endl;
+    // If the game has ended, show the result. Otherwise show whose turn it is.
+    if (gameOver)
+        cout << gameOverMessage << endl;
+    else
+        cout << "[" << (turn == WHITE ? "White" : "Black") << "]"
+             << (check ? " Check!" : "") << endl;
 }
 
 
 void Game::move(const string& orig, const string& dest) {
     try {
+        if (gameOver) {
+            cerr << "The game is already over." << endl;
+            return;
+        }
+
         auto [fromCol, fromRow] = parseSquare(orig);
         auto [toCol, toRow] = parseSquare(dest);
 
@@ -275,6 +283,14 @@ void Game::move(const string& orig, const string& dest) {
         enPassantCol = -1;
         enPassantRow = -1;
 
+        // Update the half-move clock BEFORE touching the board:
+        // reset on pawn move or capture, increment otherwise.
+        bool isCapture = (board[toCol][toRow] != nullptr) || isEnPassantCapture;
+        if (piece->isPawn() || isCapture)
+            halfMoveClock = 0;
+        else
+            ++halfMoveClock;
+
         // If this is an en passant capture, delete the captured pawn sideways.
         if (isEnPassantCapture) {
             delete board[currentEpCol][currentEpRow];
@@ -290,24 +306,31 @@ void Game::move(const string& orig, const string& dest) {
         board[toCol][toRow] = piece;
         board[fromCol][fromRow] = nullptr;
 
+        // Mark king/rook as having moved so castling rights are lost.
+        if (piece->isKing())
+            static_cast<King*>(piece)->hasMoved = true;
+        else if (dynamic_cast<Rook*>(piece))
+            static_cast<Rook*>(piece)->hasMoved = true;
+
         // Pawn promotion: white reaches row 7, black reaches row 0.
         int promotionRow = (turn == WHITE) ? 7 : 0;
         if (piece->isPawn() && toRow == promotionRow)
             promote(toCol, toRow);
 
-        // If a pawn just double-pushed, record it as the En Passant target for next turn.
+        // If a pawn just double-pushed, record it as the EP target for next turn.
         int direction = (turn == WHITE) ? 1 : -1;
         if (piece->isPawn() && toRow - fromRow == 2 * direction) {
             enPassantCol = toCol;
-            enPassantRow = toRow; // the pawn's new position (used by EP-aware isLegalMove)
+            enPassantRow = toRow;
         }
 
         check = false;
         turn = (turn == WHITE) ? BLACK : WHITE;
 
-        if (isInCheck(turn)) {
+        if (isInCheck(turn))
             check = true;
-        }
+
+        checkGameOver();
 
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
@@ -315,6 +338,218 @@ void Game::move(const string& orig, const string& dest) {
     }
 }
 
+bool Game::hasAnyLegalMove() const {
+
+    for (int fromRow = 0; fromRow < 8; ++fromRow) {
+        for (int fromCol = 0; fromCol < 8; ++fromCol) {
+            Piece* p = board[fromCol][fromRow];
+
+            // If empty square or piece is of wrong color
+            if (!p || p->getColor() != turn) continue;
+
+            // Try every possible destination square.
+            for (int toRow = 0; toRow < 8; ++toRow) {
+                for (int toCol = 0; toCol < 8; ++toCol) {
+                    // do not consider the same square
+                    if (fromCol == toCol && fromRow == toRow) continue;
+
+                    bool legal = false;
+                    // Check if the moves are legal given the type of the piece
+                    if (p->isPawn()) {
+                        // Must use EP-aware overload so En Passant captures are considered.
+                        legal = static_cast<Pawn*>(p)->isLegalMove(
+                            fromCol, fromRow, toCol, toRow,
+                            board, enPassantCol, enPassantRow);
+                    } else {
+                        legal = p->isLegalMove(fromCol, fromRow, toCol, toRow, board);
+                    }
+
+                    // If the move is legal and doesn't put the king in check
+                    if (legal && !putsInCheck(fromCol, fromRow, toCol, toRow,
+                                              enPassantCol, enPassantRow))
+                        return true;
+                }
+            }
+        }
+    }
+
+    // We also check whether castling is available as a legal move.
+    // We attempt both sides; if the castle() logic would succeed the king has a legal move.
+    int row = (turn == WHITE) ? 0 : 7;
+    Color opponent = (turn == WHITE) ? BLACK : WHITE;
+
+    Piece* kingPiece = board[4][row];
+    /* 1. If the square is not empty and
+       2. The piece is a King piece and
+       3. The piece king piece hasn't moved and
+       4. The King is not in check*/
+    if (kingPiece && kingPiece->isKing() && !static_cast<King*>(kingPiece)->hasMoved
+        && !isInCheck(turn)) {
+        // We try both the kingside and queenside castling in order
+        for (bool kingside : {true, false}) {
+            // Depending on the castling side, fetch the rook position
+            int rookCol = kingside ? 7 : 0;
+            Piece* rookPiece = board[rookCol][row];
+            
+            // If the square is empty or the piece is not a rook --> continue;
+            if (!rookPiece || !dynamic_cast<Rook*>(rookPiece)) continue;
+            // If the rook has moved --> continue;
+            if (static_cast<Rook*>(rookPiece)->hasMoved) continue;
+
+            // Check squares between king and rook are empty.
+            int step = kingside ? 1 : -1;
+            bool pathClear = true;
+            for (int c = 4 + step; c != rookCol; c += step)
+                if (board[c][row]) { pathClear = false; break; }
+            if (!pathClear) continue;
+
+            // Check king doesn't pass through or land on an attacked square.
+            int kingDest = kingside ? 6 : 2;
+            bool attacked = false;
+            for (int c = 4 + step; ; c += step) {
+                if (isSquareAttacked(c, row, opponent)) { attacked = true; break; }
+                if (c == kingDest) break;
+            }
+            if (!attacked) return true;
+        }
+    }
+
+    // If there no more legal moves for any of the pieces --> return False
+    return false;
+}
+
+
+std::string Game::boardSnapshot() const {
+    // Encode each square as a two-character token: color + piece letter.
+    // Empty squares are "..", active color is appended, then EP file (or '-').
+    std::string s;
+    s.reserve(64 * 2 + 2);
+    for (int row = 0; row < 8; ++row) {
+        for (int col = 0; col < 8; ++col) {
+            // Fetch the piece
+            Piece* p = board[col][row];
+            // If square is empty store as ".." (2 dots)
+            if (!p) { s += ".."; continue; }
+            
+            s += (p->getColor() == WHITE) ? 'W' : 'B';
+            // One-character piece code.
+            if      (p->isKing())               s += 'K';
+            else if (p->isPawn())               s += 'P';
+            else if (dynamic_cast<Queen*>(p))   s += 'Q';
+            else if (dynamic_cast<Rook*>(p))    s += 'R';
+            else if (dynamic_cast<Bishop*>(p))  s += 'B';
+            else                                s += 'N'; // Knight
+        }
+    }
+    s += (turn == WHITE) ? 'W' : 'B';
+    s += (enPassantCol == -1) ? '-' : static_cast<char>('a' + enPassantCol);
+    return s;
+}
+
+
+bool Game::hasInsufficientMaterial() const {
+    /* Struct to collect the info of all the pieces that are on the board, 
+    The info being, their color, type, and the squre color for bishop pieces */
+    // Square color: (col + row) % 2.
+    struct PieceInfo { Color color; char type; int squareColor; };
+    std::vector<PieceInfo> pieces;
+
+    // Go through the board and collect each piece that is on it
+    for (int row = 0; row < 8; ++row) {
+        for (int col = 0; col < 8; ++col) {
+
+            Piece* p = board[col][row];
+            if (!p) continue; // skip if the square is empty --> no Piece
+
+            char type = '?';
+            if      (p->isKing())              type = 'K';
+            else if (p->isPawn())              type = 'P';
+            else if (dynamic_cast<Queen*>(p))  type = 'Q';
+            else if (dynamic_cast<Rook*>(p))   type = 'R';
+            else if (dynamic_cast<Bishop*>(p)) type = 'B';
+            else                               type = 'N'; // Knight
+
+            // Any pawn, queen, or rook means sufficient material.
+            // Which means that checkmate is still possible so --> return false;
+            if (type == 'P' || type == 'Q' || type == 'R') return false;
+
+            pieces.push_back({p->getColor(), type, (col + row) % 2});
+        }
+    }
+
+    // Count minor pieces (bishop or knight only) per side.
+    int whiteMinors = 0, blackMinors = 0;
+    int whiteBishopSquare = -1, blackBishopSquare = -1;
+
+    for (const auto& pi : pieces) {
+        if (pi.type == 'K') continue;
+        if (pi.color == WHITE) {
+            ++whiteMinors;
+            if (pi.type == 'B') whiteBishopSquare = pi.squareColor;
+        } else {
+            ++blackMinors;
+            if (pi.type == 'B') blackBishopSquare = pi.squareColor;
+        }
+    }
+
+    // K vs K
+    if (whiteMinors == 0 && blackMinors == 0) return true;
+
+    // K+minor vs K (single bishop or knight on either side, nothing on the other)
+    if (whiteMinors == 1 && blackMinors == 0) return true;
+    if (whiteMinors == 0 && blackMinors == 1) return true;
+
+    // K+B vs K+B with bishops on the same square color: neither can ever capture
+    if (whiteMinors == 1 && blackMinors == 1 &&
+        whiteBishopSquare != -1 && blackBishopSquare != -1 &&
+        whiteBishopSquare == blackBishopSquare) return true;
+
+    return false;
+}
+
+void Game::checkGameOver() {
+    // --- Insufficient material ---
+    if (hasInsufficientMaterial()) {
+        gameOverMessage = "Draw by insufficient material.";
+        gameOver = true;
+        return;
+    }
+
+    // --- Threefold repetition ---
+    std::string snap = boardSnapshot();
+    positionHistory.push_back(snap);
+    int count = 0;
+    for (const auto& h : positionHistory)
+        if (h == snap) ++count;
+    if (count >= 3) {
+        gameOverMessage = "Draw by threefold repetition.";
+        gameOver = true;
+        return;
+    }
+
+    // --- 50-move rule ---
+    if (halfMoveClock >= 100) {
+        gameOverMessage = "Draw by the 50-move rule.";
+        gameOver = true;
+        return;
+    }
+
+    // --- Checkmate / stalemate ---
+    // Checked last: most expensive (scans all pieces × all squares).
+    if (!hasAnyLegalMove()) {
+        // If no legal moves, and the king is in Check --> checkmate
+        if (isInCheck(turn)) {
+            Color winner = (turn == WHITE) ? BLACK : WHITE;
+            gameOverMessage = std::string("Checkmate! ")
+                            + (winner == WHITE ? "White" : "Black") + " wins.";
+        } 
+        // Otherwise --> stalemate
+        else {
+            gameOverMessage = "Stalemate! The game is a draw.";
+        }
+        gameOver = true;
+    }
+}
 
 void Game::promote(int col, int row) {
     Color c = board[col][row]->getColor();

@@ -22,6 +22,9 @@ public:
 
     Color getTurn() const { return turn; }
 
+    // Returns true once checkmate, stalemate, or a draw rule has ended the game.
+    bool isGameOver() const { return gameOver; }
+
 private:
     // Square indexes (0..7 for columns and rows).
     using Case = std::pair<int,int>; // (colonne, ligne) = (column, row)
@@ -36,6 +39,21 @@ private:
     // Indicates whether the opponent king is in check.
     bool check;
 
+    // Set to true once the game has ended (checkmate, stalemate, draw).
+    // tryMove() and castle() are no-ops while this is true.
+    bool gameOver = false;
+
+    // Human-readable reason the game ended, printed by display() after the board.
+    std::string gameOverMessage;
+
+    // Board snapshots for threefold repetition detection.
+    // Each entry encodes piece positions + active color + en passant file.
+    std::vector<std::string> positionHistory;
+
+    // Half-move clock for the 50-move rule.
+    // Reset on every pawn move or capture; incremented otherwise.
+    int halfMoveClock = 0;
+    
     // Convert a square string (e.g., "b1") to column and row indexes.
     Case parseSquare(const std::string& s) const;
 
@@ -52,6 +70,23 @@ private:
     // epCol/epRow: current en passant target (-1 if none).
     bool putsInCheck(int fromCol, int fromRow, int toCol, int toRow,
                      int epCol, int epRow) const;
+
+    // Returns true if the current player has at least one legal move.
+    // Used to detect checkmate and stalemate.
+    bool hasAnyLegalMove() const;
+
+    // Returns true if neither side has enough material to deliver checkmate.
+    // Covers: K vs K, K+N vs K, K+B vs K, K+B vs K+B (same-colour bishops).
+    bool hasInsufficientMaterial() const;
+
+    // Serialise the board position + active color + EP file into a string.
+    // Used to track threefold repetition.
+    std::string boardSnapshot() const;
+
+    // Called at the end of every move and castle.
+    // Detects and announces checkmate, stalemate, threefold repetition,
+    // and the 50-move rule, and sets gameOver accordingly.
+    void checkGameOver();
 
     // Execute a regular piece move (e.g. "e2" -> "e4").
     void move(const std::string& orig, const std::string& dest);
