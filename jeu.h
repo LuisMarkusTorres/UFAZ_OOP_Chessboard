@@ -25,6 +25,15 @@ public:
     // Returns true once checkmate, stalemate, or a draw rule has ended the game.
     bool isGameOver() const { return gameOver; }
 
+    // Returns the board position in canonical form (a1..h8, comma-separated).
+    std::string canonical_position() const;
+
+    // Returns the game result string: "1-0", "0-1", "1/2-1/2", or "?-?".
+    std::string getResult() const { return result; }
+
+    // Allows main() to set the result for resign / draw / quit.
+    void setResult(const std::string& r) { result = r; }
+
 private:
     // Square indexes (0..7 for columns and rows).
     using Case = std::pair<int,int>; // (colonne, ligne) = (column, row)
@@ -42,6 +51,9 @@ private:
     // Set to true once the game has ended (checkmate, stalemate, draw).
     // tryMove() and castle() are no-ops while this is true.
     bool gameOver = false;
+
+    // Machine-readable result: "1-0", "0-1", "1/2-1/2", "?-?".
+    std::string result = "?-?";
 
     // Human-readable reason the game ended, printed by display() after the board.
     std::string gameOverMessage;

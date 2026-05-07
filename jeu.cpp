@@ -511,6 +511,7 @@ void Game::checkGameOver() {
     // --- Insufficient material ---
     if (hasInsufficientMaterial()) {
         gameOverMessage = "Draw by insufficient material.";
+        result = "1/2-1/2";
         gameOver = true;
         return;
     }
@@ -523,6 +524,7 @@ void Game::checkGameOver() {
         if (h == snap) ++count;
     if (count >= 3) {
         gameOverMessage = "Draw by threefold repetition.";
+        result = "1/2-1/2";
         gameOver = true;
         return;
     }
@@ -530,6 +532,7 @@ void Game::checkGameOver() {
     // --- 50-move rule ---
     if (halfMoveClock >= 100) {
         gameOverMessage = "Draw by the 50-move rule.";
+        result = "1/2-1/2";
         gameOver = true;
         return;
     }
@@ -542,10 +545,12 @@ void Game::checkGameOver() {
             Color winner = (turn == WHITE) ? BLACK : WHITE;
             gameOverMessage = std::string("Checkmate! ")
                             + (winner == WHITE ? "White" : "Black") + " wins.";
+            result = (winner == WHITE) ? "1-0" : "0-1";
         } 
         // Otherwise --> stalemate
         else {
             gameOverMessage = "Stalemate! The game is a draw.";
+            result = "1/2-1/2";
         }
         gameOver = true;
     }
@@ -665,6 +670,28 @@ void Game::castle(bool kingside) {
     } catch (const exception& e) {
         cerr << "Error: " << e.what() << endl;
     }
+}
+
+std::string Game::canonical_position() const {
+    std::string output;
+    // Traverse a1→h1, then a2→h2, …, a8→h8.
+    // board[col][row]: col 0='a', row 0=rank1.
+    for (int row = 0; row < 8; ++row) {
+        for (int col = 0; col < 8; ++col) {
+            Piece* p = board[col][row];
+            if (p) {
+                output += (p->getColor() == WHITE) ? 'w' : 'b';
+                if      (p->isKing())                 output += 'K';
+                else if (p->isPawn())                 output += 'P';
+                else if (dynamic_cast<Queen*>(p))     output += 'Q';
+                else if (dynamic_cast<Rook*>(p))      output += 'R';
+                else if (dynamic_cast<Bishop*>(p))    output += 'B';
+                else                                  output += 'N'; // Knight
+            }
+            output += ',';
+        }
+    }
+    return output;
 }
 
 // Responsible for castling and regular moves
