@@ -312,16 +312,30 @@ void Game::move(const string& orig, const string& dest) {
         else if (dynamic_cast<Rook*>(piece))
             static_cast<Rook*>(piece)->hasMoved = true;
 
-        // Pawn promotion: white reaches row 7, black reaches row 0.
-        int promotionRow = (turn == WHITE) ? 7 : 0;
-        if (piece->isPawn() && toRow == promotionRow)
-            promote(toCol, toRow);
+        // Remember whether the moving piece was a pawn.
+        // Important: after promotion the original pawn object is deleted,
+        // so we should not use `piece->isPawn()` afterwards.
+        bool wasPawn = piece->isPawn();
 
-        // If a pawn just double-pushed, record it as the EP target for next turn.
+        // Determine pawn movement direction:
+        // white pawns move upward (+1 row), black downward (-1 row).
         int direction = (turn == WHITE) ? 1 : -1;
-        if (piece->isPawn() && toRow - fromRow == 2 * direction) {
+
+        // Detect a double pawn push (needed for en passant on the next turn).
+        bool isDoublePawnPush = wasPawn && (toRow - fromRow == 2 * direction);
+
+        // Store the en passant target square if a pawn moved two squares.
+        if (isDoublePawnPush) {
             enPassantCol = toCol;
             enPassantRow = toRow;
+        }
+
+        // Pawn promotion: white promotes on row 7, black on row 0.
+        int promotionRow = (turn == WHITE) ? 7 : 0;
+
+        // Replace the pawn with the chosen promoted piece.
+        if (wasPawn && toRow == promotionRow) {
+            promote(toCol, toRow);
         }
 
         check = false;
