@@ -25,17 +25,6 @@ bool is_valid_move_queenside_castle(string const& cmd) {
     return regex_match(cmd, mouvmtpattern);
 }
 
-void trim(string& s) {
-    size_t first = s.find_first_not_of(" \t\r\n");
-    if (first == string::npos) {
-        s.clear();
-        return;
-    }
-
-    size_t last = s.find_last_not_of(" \t\r\n");
-    s = s.substr(first, last - first + 1);
-}
-
 int main(int argc, char* argv[]) {
     Game mygame;
     string move;
@@ -66,15 +55,9 @@ int main(int argc, char* argv[]) {
         if (!getline(*input, move))
             break;
 
-        trim(move);
-
-        // ignore empty lines
-        if (move.empty())
-            continue;
-
-        // ignore comments, even if grep missed them
-        if (move[0] == '#')
-            continue;
+        // Strip trailing whitespace (spaces, carriage returns from Windows-format files).
+        while (!move.empty() && (move.back() == '\r' || move.back() == ' ' || move.back() == '\t'))
+            move.pop_back();
 
         if (move == "/quit") {
             // result stays "?-?" (interrupted game)
